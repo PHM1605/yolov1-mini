@@ -1,12 +1,17 @@
 import torch 
 import torch.nn as nn 
 
-
+# convert box in cell-coords to image-coords
+# box: (batch,grid,grid,4)
+def decode(box, cell_x, cell_y, grid_size):
+  cx = (box[...,0:1] + cell_x) / grid_size
+  cy = (box[...,1:2] + cell_y) / grid_size 
+  wh = box[...,2:4]
+  return torch.cat([cx,cy,wh,box[...,4:5]], dim=-1)
 
 class YoloLoss(nn.Module):
   def __init__(self, grid_size=7, num_boxes=2, num_classes=2):
     super().__init__()
-    self.mse = nn.MSELoss()
     self.grid_size = grid_size 
     self.num_boxes = num_boxes 
     self.num_classes = num_classes 
@@ -32,16 +37,8 @@ class YoloLoss(nn.Module):
     cell_x = grid_range.repeat(self.grid_size,1) # repeat 1 time => each row is [0,1,..,6]
     cell_y = grid_range.repeat(self.grid_size,1).t()
 
-    def decode(box):
-      # each (batch,grid,grid,1)
-      cx = (torch.sigmoid(box[...,0:1]) + cell_x) / self.grid_size # normalized, img coords
-      cy = (torch.sigmoid(box[...,1:2]) + cell_y) / self.grid_size 
-      w = torch.exp(box[...,2:3]) / self.grid_size 
-      h = torch.exp(box[...,3:4]) / self.grid_size 
-      return torch.cat([cx,cy,w,h,box[...,4:5]], dim=-1)
-    
-    box1_dec = decode(box1)
-    box2_dec = decode(box2)
+    box1_dec = decode(box1, cell_x, cell_y, self.grid_size)
+    box2_dec = decode(box2, cell_x, cell_y, self.grid_size)
 
     # compute iou to assign responsible box
     iou1 = self._compute_iou(box1_dec[...,0:4], true_box[...,0:4]) # (batch,grid,grid)

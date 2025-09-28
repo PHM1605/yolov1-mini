@@ -10,11 +10,11 @@ transform = transforms.Compose([
 img = cv2.imread("data/images/train/00009.jpg")
 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 img = transform(img).unsqueeze(0) # (1,3,H,W)
-# with open("data/labels/train/00009.txt", "r") as f:
-#   rows = f.readlines()
-# row = [r.strip().split() for r in rows][0]
-# cl, cx, cy, box_w, box_h = map(float, row)
-# img_h, img_w, _ = img.shape
+with open("data/labels/train/00009.txt", "r") as f:
+  rows = f.readlines()
+row = [r.strip().split() for r in rows][0]
+cl, cx, cy, box_w, box_h = map(float, row)
+_, _, img_h, img_w = img.shape
 
 # # convert to pixels
 # x1 = int((cx-box_w/2)*img_w) 
@@ -26,6 +26,11 @@ img = transform(img).unsqueeze(0) # (1,3,H,W)
 # cv2.rectangle(img, (x1,y1),(x2,y2), color, 2)
 # cv2.imwrite('test.png', img)
 
-yolo_test = Yolov1Mini()
-res = yolo_test(img)
-print(res.shape)
+# yolo_test = Yolov1Mini()
+# res = yolo_test(img)
+# print(res.shape)
+
+from dataset import YoloToyDataset
+ds = YoloToyDataset("data", "train", 224)
+img, target = ds[9]
+print(target.shape)

@@ -18,12 +18,10 @@ train_loader = DataLoader(train_ds, batch_size=cfg["batch_size"], shuffle=True)
 val_loader = DataLoader(val_ds, batch_size=cfg["batch_size"], shuffle=False)
 
 # box: (5,) = [x,y,w,h,conf]
-def decode(box, i, j, grid_size):
-  cx = (torch.sigmoid(box[0]) + j) / grid_size 
-  cy = (torch.sigmoid(box[1]) + i) / grid_size 
-  w = torch.exp(box[2]) / grid_size 
-  h = torch.exp(box[3]) / grid_size 
-  return torch.tensor([cx,cy,w,h,torch.sigmoid(box[4])]) 
+def decode(box, row, col, grid_size):
+  cx = (box[0]+col) / grid_size 
+  cy = (box[1]+row) / grid_size
+  return torch.tensor([cx,cy,box[2],box[3],box[4]]) 
 
 for epoch in range(cfg["epochs"]):
   model.train()
@@ -61,7 +59,9 @@ for epoch in range(cfg["epochs"]):
         true_cls = target[b,i,j,5:].argmax().item()
         # only consider cells that have object
         if target[b,i,j,4] == 1:
+          print("WE HERE")
           iou = criterion._compute_iou(pred_box[None,None,:4], true_box[None,None,:4])[0,0]
+          print("IOU: ", iou)
           if pred_cls == true_cls and iou>0.5:
             correct += 1
           total += 1

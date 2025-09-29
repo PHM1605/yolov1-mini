@@ -10,6 +10,7 @@ transform = transforms.Compose([
 img = cv2.imread("data/images/train/00009.jpg")
 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 img = transform(img).unsqueeze(0) # (1,3,H,W)
+print(img.shape)
 with open("data/labels/train/00009.txt", "r") as f:
   rows = f.readlines()
 row = [r.strip().split() for r in rows][0]

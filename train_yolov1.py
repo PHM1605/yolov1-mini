@@ -2,7 +2,7 @@ import torch, yaml
 from torch.utils.data import DataLoader
 from model import Yolov1Mini
 from dataset import YoloToyDataset
-from losses import YoloLoss
+from losses import YoloLoss, decode_pred, decode_target
 from tqdm import tqdm 
 
 cfg = yaml.safe_load(open("config.yaml"))
@@ -10,18 +10,25 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 model = Yolov1Mini(cfg["grid_size"], cfg["num_boxes"], cfg["num_classes"]).to(device)
 criterion = YoloLoss(cfg["grid_size"], cfg["num_boxes"], cfg["num_classes"])
-optimizer = torch.optim.Adam(model.parameters(), lr=cfg["lr"])
+# optimizer = torch.optim.Adam(model.parameters(), lr=cfg["lr"])
+
+def lr_lambda(epoch):
+  if epoch<5:
+    return (1e-3 + (1e-2-1e-3)*(epoch/5))
+  elif epoch<80: # 75 epochs at 1e-2
+    return 1e-2
+  elif epoch<110: # 30 epochs at 1e-3
+    return 1e-3
+  else: # rest at 1e-4
+    return 1e-4
+
+optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.9, weight_decay=5e-4)
+scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
 
 train_ds = YoloToyDataset(cfg["data_dir"], "train", cfg["img_size"])
 val_ds = YoloToyDataset(cfg["data_dir"], "val", cfg["img_size"])
 train_loader = DataLoader(train_ds, batch_size=cfg["batch_size"], shuffle=True)
 val_loader = DataLoader(val_ds, batch_size=cfg["batch_size"], shuffle=False)
-
-# box: (5,) = [x,y,w,h,conf]
-def decode(box, row, col, grid_size):
-  cx = (box[0]+col) / grid_size 
-  cy = (box[1]+row) / grid_size
-  return torch.tensor([cx,cy,box[2],box[3],box[4]]) 
 
 for epoch in range(cfg["epochs"]):
   model.train()
@@ -33,6 +40,7 @@ for epoch in range(cfg["epochs"]):
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
+    scheduler.step()
     total_loss += loss.item()
   print(f"Epoch {epoch+1} Loss: {total_loss/len(train_loader):.4f}")
   # Validation
@@ -50,16 +58,28 @@ for epoch in range(cfg["epochs"]):
         # find cell with highest confidence
         cell_conf = pred[b, :, :, 4] # (grid,grid)
         max_idx = cell_conf.argmax() # e.g. max at cell (3,5) => max_idx=3*7+5=26
-        i, j = divmod(max_idx.item(), grid_size) # divmod(26,7)=>(26//7,26%7)=>(3,5)
+        row, col = divmod(max_idx.item(), grid_size) # divmod(26,7)=>(26//7,26%7)=>(3,5)
 
-        pred_box_raw = pred[b,i,j,0:5] # (5,)
-        pred_box = decode(pred_box_raw, i, j, grid_size)
-        pred_cls = pred[b,i,j,5:].argmax().item()
-        true_box = target[b,i,j,0:5]
-        true_cls = target[b,i,j,5:].argmax().item()
+        pred_box_raw = pred[b,row,col,0:5] # (5,)
+        pred_box = decode_pred(
+          pred_box_raw.unsqueeze(0).unsqueeze(0), 
+          torch.tensor([[col]]), 
+          torch.tensor([[row]]), 
+          grid_size)[0,0]
+        pred_cls = pred[b,row,col,5:].argmax().item()
+
+        true_box_raw = target[b,row,col,0:5]
+        true_box = decode_target(
+          true_box_raw.unsqueeze(0).unsqueeze(0),
+          torch.tensor([[col]]),
+          torch.tensor([[row]]),
+          grid_size)[0,0]
+        true_cls = target[b,row,col,5:].argmax().item()
         # only consider cells that have object
-        if target[b,i,j,4] == 1:
+        if target[b,row,col,4] == 1:
           print("WE HERE")
+          print(pred_box)
+          print(true_box)
           iou = criterion._compute_iou(pred_box[None,None,:4], true_box[None,None,:4])[0,0]
           print("IOU: ", iou)
           if pred_cls == true_cls and iou>0.5:

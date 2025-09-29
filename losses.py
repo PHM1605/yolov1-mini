@@ -1,13 +1,22 @@
 import torch 
 import torch.nn as nn 
 
-# convert box in cell-coords to image-coords
+# convert box in cell-coords-xy and norm-coords-sqrt-wh to image-coords
 # box: (batch,grid,grid,4)
-def decode(box, cell_x, cell_y, grid_size):
-  cx = (box[...,0:1] + cell_x) / grid_size
-  cy = (box[...,1:2] + cell_y) / grid_size 
-  wh = box[...,2:4]
-  return torch.cat([cx,cy,wh,box[...,4:5]], dim=-1)
+def decode_pred(box, cell_x, cell_y, grid_size):
+  cx = (torch.sigmoid(box[...,0:1]) + cell_x) / grid_size
+  cy = (torch.sigmoid(box[...,1:2]) + cell_y) / grid_size
+  w = torch.sigmoid(box[..., 2:3])**2
+  h = torch.sigmoid(box[..., 3:4])**2
+  conf = torch.sigmoid(box[...,4:5])
+  return torch.cat([cx,cy,w,h,conf], dim=-1)
+
+def decode_target(box, cell_x, cell_y, grid_size):
+  cx = (box[...,0:1]+cell_x) / grid_size
+  cy = (box[...,1:2]+cell_y) / grid_size 
+  w = box[...,2:3]**2
+  h = box[...,3:4]**2
+  return torch.cat([cx, cy, w, h, box[...,4:5]], dim=-1)
 
 class YoloLoss(nn.Module):
   def __init__(self, grid_size=7, num_boxes=2, num_classes=2):
@@ -17,53 +26,46 @@ class YoloLoss(nn.Module):
     self.num_classes = num_classes 
     self.lambda_coord = 5
     self.lambda_noobj = 0.5
-    self.mse = nn.MSELoss(reduction="sum")
-    self.bce = nn.BCEWithLogitsLoss(reduction="sum")
+    self.sse = nn.MSELoss(reduction="sum")
   
   # preds: (batch,grid_size,grid_size,B*5+num_classes)
-  # targets: (batch,grid_size,grid_size,B*5+num_classes) (but only use 1st box)
+  # targets: (batch,grid_size,grid_size,5+num_classes)
   def forward(self, preds, targets):
     obj_mask = (targets[...,4]>0).float().unsqueeze(-1) # (batch,grid,grid,1)
+    noobj_mask = 1 - obj_mask
     # split predictions
     box1 = preds[...,0:5] # (batch,grid,grid,4)
     box2 = preds[...,5:10] # (batch,grid,grid,4)
     cls_pred= preds[...,10:] # (batch,grid,grid,num_classes)
-    # targets (using only 1st box)
+    # targets 
     true_box = targets[...,0:5]
-    cls_true = targets[...,10:]
+    cls_true = targets[...,5:]
 
     device = preds.device 
     grid_range = torch.arange(self.grid_size, device=device)
-    cell_x = grid_range.repeat(self.grid_size,1) # repeat 1 time => each row is [0,1,..,6]
+    cell_x = grid_range.repeat(self.grid_size,1) # repeat 7 time along row, 1 time along column
     cell_y = grid_range.repeat(self.grid_size,1).t()
-
-    box1_dec = decode(box1, cell_x, cell_y, self.grid_size)
-    box2_dec = decode(box2, cell_x, cell_y, self.grid_size)
-
+    # decode predictions
+    box1_dec = decode_pred(box1, cell_x, cell_y, self.grid_size)
+    box2_dec = decode_pred(box2, cell_x, cell_y, self.grid_size)
+    # decode true target
+    true_dec = decode_target(true_box, cell_x, cell_y, self.grid_size)
     # compute iou to assign responsible box
-    iou1 = self._compute_iou(box1_dec[...,0:4], true_box[...,0:4]) # (batch,grid,grid)
-    iou2 = self._compute_iou(box2_dec[...,0:4], true_box[...,0:4]) # (batch,grid,grid)
+    iou1 = self._compute_iou(box1_dec[...,:4], true_dec[...,:4]) # (batch,grid,grid)
+    iou2 = self._compute_iou(box2_dec[...,:4], true_dec[...,:4]) # (batch,grid,grid)
     iou_mask = (iou1>iou2).float().unsqueeze(-1) # (batch,grid,grid,1)
     # select responsible box
     pred_box = iou_mask*box1_dec + (1-iou_mask)*box2_dec # (batch,grid,grid,4)
+    iou_responsible = (iou_mask*iou1.unsqueeze(-1)+(1-iou_mask)*iou2.unsqueeze(-1))
     # box coords loss
-    xy_loss = self.mse(obj_mask*pred_box[...,0:2], obj_mask*true_box[...,0:2])
-    wh_loss = self.mse(
-      obj_mask*torch.sqrt(pred_box[...,2:4].clamp(1e-6)),
-      obj_mask*torch.sqrt(true_box[...,2:4].clamp(1e-6)))
+    xy_loss = self.sse(obj_mask*pred_box[...,0:2], obj_mask*true_dec[...,0:2])
+    wh_loss = self.sse(obj_mask*torch.sqrt(pred_box[...,2:4].clamp(1e-6)), obj_mask*torch.sqrt(true_dec[...,2:4]))
     # objectness loss
-    conf_loss_obj = self.mse(obj_mask*pred_box[...,4:5], obj_mask*true_box[...,4:5])
+    conf_loss_obj = self.sse(obj_mask*pred_box[...,4:5], obj_mask*iou_responsible)
     # no-object loss
-    noobj_mask = 1-obj_mask 
-    noobj_conf_loss = (
-      self.mse(noobj_mask*box1[...,4:5], torch.zeros_like(box1[...,4:5])) + 
-      self.mse(noobj_mask*box2[...,4:5], torch.zeros_like(box2[...,4:5]))
-    )
+    noobj_conf_loss = self.sse(noobj_mask*pred_box[...,4:5], torch.zeros_like(pred_box[...,4:5]))
     # classification loss
-    cls_loss = self.bce(
-      obj_mask.expand_as(cls_pred) * cls_pred,
-      obj_mask.expand_as(cls_true) * cls_true 
-    )
+    cls_loss = self.sse(obj_mask*torch.softmax(cls_pred,dim=-1), obj_mask*cls_true)
     # total loss 
     total = (
       self.lambda_coord*(xy_loss+wh_loss) + 

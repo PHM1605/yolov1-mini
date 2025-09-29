@@ -5,7 +5,7 @@ def conv_block(c_in, c_out, k, s, p, use_pool):
   layers = []
   # (channel_in, channel_out, kernel, stride, padding)
   layers.append(nn.Conv2d(c_in, c_out, kernel_size=k, stride=s, padding=p, bias=False))
-  layers.append(nn.LeakyReLU())
+  layers.append(nn.LeakyReLU(0.1))
   if use_pool:
     layers.append(nn.MaxPool2d(kernel_size=2, stride=2))  
   return nn.Sequential(*layers)
@@ -35,7 +35,6 @@ class Yolov1Mini(nn.Module):
     backbone_layers.append(conv_block(1024, 1024, k=3, s=1, p=1, use_pool=False))
     # backbone_layers.append(conv_block(1024, 1024, k=3, s=2, p=1, use_pool=False)) # remove the stride=2 to make output 7x7x30
     backbone_layers.append(conv_block(1024, 1024, k=3, s=1, p=1, use_pool=False))
-    backbone_layers.append(conv_block(1024, 1024, k=3, s=1, p=1, use_pool=False)) # (batch,1024,7,7)
 
     # fully-connected layers
     fc_layers = []
@@ -52,4 +51,5 @@ class Yolov1Mini(nn.Module):
     x = self.backbone(x)
     x = self.fc(x)
     # (batch,7,7,boxes*5+classes)
+    # note: model will output CELL-coords xy, SQRT OF NORM-FULL-IMG-coords wh
     return x.view(-1, self.grid_size, self.grid_size, self.num_boxes*5+self.num_classes) 

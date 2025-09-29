@@ -54,11 +54,6 @@ class YoloLoss(nn.Module):
   # targets: (batch,grid_size,grid_size,5+num_classes)
   def forward(self, preds, targets):
     preds = preds.reshape(-1, self.grid_size, self.grid_size, self.num_classes+self.num_boxes*5)
-    # compute iou to assign responsible box
-    iou1 = intersection_over_union(preds[...,:4], targets[...,:4]) # (batch,grid,grid)
-    iou2 = intersection_over_union(preds[...,4:8], targets[...,:4]) # (batch,grid,grid)
-
-
 
     obj_mask = (targets[...,4]>0).float().unsqueeze(-1) # (batch,grid,grid,1)
     noobj_mask = 1 - obj_mask
@@ -80,8 +75,8 @@ class YoloLoss(nn.Module):
     # decode true target
     true_dec = decode_target(true_box, cell_x, cell_y, self.grid_size)
     # compute iou to assign responsible box
-    iou1 = self._compute_iou(box1_dec[...,:4], true_dec[...,:4]) # (batch,grid,grid)
-    iou2 = self._compute_iou(box2_dec[...,:4], true_dec[...,:4]) # (batch,grid,grid)
+    iou1 = intersection_over_union(box1_dec[...,:4], true_dec[...,:4]) # (batch,grid,grid)
+    iou2 = intersection_over_union(box2_dec[...,:4], true_dec[...,:4]) # (batch,grid,grid)
     iou_mask = (iou1>iou2).float().unsqueeze(-1) # (batch,grid,grid,1)
     # select responsible box
     pred_box = iou_mask*box1_dec + (1-iou_mask)*box2_dec # (batch,grid,grid,4)

@@ -12,7 +12,7 @@ class YoloToyDataset(Dataset):
   
     self.img_paths = sorted(glob.glob(f"{self.img_dir}/*.jpg"))
     self.transform = transforms.Compose([
-      # transforms.Resize((img_size, img_size)),
+      transforms.Resize((img_size, img_size)),
       transforms.ToTensor()
     ])
   
@@ -29,18 +29,26 @@ class YoloToyDataset(Dataset):
     if os.path.exists(label_path):
       with open(label_path) as f:
         rows = f.readlines()
-      for row in rows:
-        row = row.strip().split()
-        cl, cx, cy, box_w, box_h = map(float, row)
 
-        col = int(cx*self.grid_size)
-        row = int(cy*self.grid_size)
-        # convert to cell-relative coords
-        cell_x = cx*self.grid_size-col
-        cell_y = cy*self.grid_size-row
-        box = torch.tensor([cell_x, cell_y, math.sqrt(box_w), math.sqrt(box_h), 1.0]) # (cx,cy,w,h,conf)
-        target[row,col,0:5] = box 
-        target[row,col,5+int(cl)] = 1
-        # print(f"Image {idx}: cell=({j},{i}), box={box.tolist()}, class={int(cl)}")
+    for row in rows:
+      row = row.strip().split()
+      cl, cx, cy, box_w, box_h = map(float, row)
+      cl = int(cl)
+      # i, j: cell row and cell column
+      i = int(cy*self.grid_size)
+      j = int(cx*self.grid_size)
+      # convert to cell-relative coords
+      cell_x = cx*self.grid_size-j
+      cell_y = cy*self.grid_size-i
+      # width/height of box in [cell] unit
+      width_cell = box_w * self.grid_size 
+      height_cell = box_h * self.grid_size 
+
+      # 1 cell has only 1 object
+      if target[i,j,5] == 0:
+        target[i,j,5] = 1
+        box = torch.tensor([cell_x, cell_y, width_cell, height_cell]) # (x-within-cell,y-within-cell,w,h)
+        target[i,j,0:4] = box 
+        target[i,j,5+cl] = 1
     return img, target
   

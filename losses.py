@@ -18,19 +18,48 @@ def decode_target(box, cell_x, cell_y, grid_size):
   h = box[...,3:4]**2
   return torch.cat([cx, cy, w, h, box[...,4:5]], dim=-1)
 
+# pred_box: (batch,grid_size,grid_size,4) or (num_boxes,4)
+def intersection_over_union(pred_box, true_box):
+  pred_xy = pred_box[...,:2] # (grid,grid,2)
+  pred_wh = pred_box[...,2:4]
+  pred_tl = pred_xy - pred_wh/2 # (grid,grid,2)
+  pred_br = pred_xy + pred_wh/2
+
+  true_xy = true_box[...,:2]
+  true_wh = true_box[...,2:4]
+  true_tl = true_xy - true_wh/2
+  true_br = true_xy + true_wh/2
+
+  tl = torch.max(pred_tl, true_tl) # (grid,grid,2)
+  br = torch.min(pred_br, true_br) # (grid,grid,2)
+  inter = (br-tl).clamp(min=0) # (grid,grid,2)
+  inter_area = inter[...,0]*inter[...,1] # (grid,grid)
+
+  pred_area = abs(pred_br[...,0]-pred_tl[...,0])*(pred_br[...,1]-pred_tl[...,1])
+  true_area = abs(true_br[...,0]-true_tl[...,0])*(true_br[...,1]-true_tl[...,1])
+  union_area = pred_area + true_area - inter_area 
+  return inter_area / (union_area+1e-6) # (grid,grid)
+
 class YoloLoss(nn.Module):
   def __init__(self, grid_size=7, num_boxes=2, num_classes=2):
     super().__init__()
     self.grid_size = grid_size 
     self.num_boxes = num_boxes 
     self.num_classes = num_classes 
-    self.lambda_coord = 5
-    self.lambda_noobj = 0.5
+    self.lambda_coord = 5 # weight for coordinates loss
+    self.lambda_noobj = 0.5 # weight for no-object loss 
     self.sse = nn.MSELoss(reduction="sum")
   
   # preds: (batch,grid_size,grid_size,B*5+num_classes)
   # targets: (batch,grid_size,grid_size,5+num_classes)
   def forward(self, preds, targets):
+    preds = preds.reshape(-1, self.grid_size, self.grid_size, self.num_classes+self.num_boxes*5)
+    # compute iou to assign responsible box
+    iou1 = intersection_over_union(preds[...,:4], targets[...,:4]) # (batch,grid,grid)
+    iou2 = intersection_over_union(preds[...,4:8], targets[...,:4]) # (batch,grid,grid)
+
+
+
     obj_mask = (targets[...,4]>0).float().unsqueeze(-1) # (batch,grid,grid,1)
     noobj_mask = 1 - obj_mask
     # split predictions
@@ -74,25 +103,3 @@ class YoloLoss(nn.Module):
       cls_loss
     )
     return total 
-      
-  # pred_box: (grid_size,grid_size,5)
-  def _compute_iou(self, pred_box, true_box):
-    pred_xy = pred_box[...,:2] # (grid,grid,2)
-    pred_wh = pred_box[...,2:4]
-    pred_tl = pred_xy - pred_wh/2 # (grid,grid,2)
-    pred_br = pred_xy + pred_wh/2
-
-    true_xy = true_box[...,:2]
-    true_wh = true_box[...,2:4]
-    true_tl = true_xy - true_wh/2
-    true_br = true_xy + true_wh/2
-
-    tl = torch.max(pred_tl, true_tl) # (grid,grid,2)
-    br = torch.min(pred_br, true_br) # (grid,grid,2)
-    inter = (br-tl).clamp(min=0) # (grid,grid,2)
-    inter_area = inter[...,0]*inter[...,1] # (grid,grid)
-
-    pred_area = (pred_br[...,0]-pred_tl[...,0])*(pred_br[...,1]-pred_tl[...,1])
-    true_area = (true_br[...,0]-true_tl[...,0])*(true_br[...,1]-true_tl[...,1])
-    union_area = pred_area + true_area - inter_area 
-    return inter_area / (union_area+1e-6) # (grid,grid)

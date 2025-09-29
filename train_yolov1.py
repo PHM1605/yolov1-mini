@@ -1,4 +1,5 @@
 import torch, yaml
+import torch.optim as optim
 from torch.utils.data import DataLoader
 from model import Yolov1Mini
 from dataset import YoloToyDataset
@@ -8,27 +9,20 @@ from tqdm import tqdm
 cfg = yaml.safe_load(open("config.yaml"))
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model = Yolov1Mini(cfg["grid_size"], cfg["num_boxes"], cfg["num_classes"]).to(device)
-criterion = YoloLoss(cfg["grid_size"], cfg["num_boxes"], cfg["num_classes"])
-# optimizer = torch.optim.Adam(model.parameters(), lr=cfg["lr"])
+def main():
+  model = Yolov1(grid_size=7, num_boxes=2, num_classes=3).to(device)
+  optimizer = optim.Adam(
+    model.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"]
+  )
+  scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, factor=0.1, patience=3, mod="max", verbose=True)
+  loss_fn = YoloLoss()
 
-def lr_lambda(epoch):
-  if epoch<5:
-    return (1e-3 + (1e-2-1e-3)*(epoch/5))
-  elif epoch<80: # 75 epochs at 1e-2
-    return 1e-2
-  elif epoch<110: # 30 epochs at 1e-3
-    return 1e-3
-  else: # rest at 1e-4
-    return 1e-4
 
-optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.9, weight_decay=5e-4)
-scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
 
-train_ds = YoloToyDataset(cfg["data_dir"], "train", cfg["img_size"])
-val_ds = YoloToyDataset(cfg["data_dir"], "val", cfg["img_size"])
-train_loader = DataLoader(train_ds, batch_size=cfg["batch_size"], shuffle=True)
-val_loader = DataLoader(val_ds, batch_size=cfg["batch_size"], shuffle=False)
+  train_ds = YoloToyDataset(cfg["data_dir"], "train", cfg["img_size"])
+  val_ds = YoloToyDataset(cfg["data_dir"], "val", cfg["img_size"])
+  train_loader = DataLoader(train_ds, batch_size=cfg["batch_size"], shuffle=True)
+  val_loader = DataLoader(val_ds, batch_size=cfg["batch_size"], shuffle=False)
 
 for epoch in range(cfg["epochs"]):
   model.train()

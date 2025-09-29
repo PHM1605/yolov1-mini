@@ -1,6 +1,6 @@
 import cv2, torch
 import numpy as np 
-from model import Yolov1Mini
+from model import Yolov1
 from torchvision import transforms
 
 transform = transforms.Compose([
@@ -27,11 +27,11 @@ _, _, img_h, img_w = img.shape
 # cv2.rectangle(img, (x1,y1),(x2,y2), color, 2)
 # cv2.imwrite('test.png', img)
 
-# yolo_test = Yolov1Mini()
-# res = yolo_test(img)
-# print(res.shape)
+yolo_test = Yolov1(grid_size=7, num_boxes=2, num_classes=2)
+res = yolo_test(img)
+print(res.shape)
 
-from dataset import YoloToyDataset
-ds = YoloToyDataset("data", "train", 224)
-img, target = ds[9]
-print(target.shape)
+# from dataset import YoloToyDataset
+# ds = YoloToyDataset("data", "train", 224)
+# img, target = ds[9]
+# print(target.shape)

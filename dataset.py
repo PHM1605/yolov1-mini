@@ -1,54 +1,47 @@
-import glob, os, torch, math
-from torch.utils.data import Dataset 
-from PIL import Image 
-from torchvision import transforms
+import torch
+from torch.utils.data import Dataset, DataLoader
+from PIL import Image, ImageDraw 
+import random 
+import numpy as np 
 
-class YoloToyDataset(Dataset):
-  def __init__(self, data_dir, split, img_size):
-    self.img_dir = os.path.join(data_dir, 'images', split)
+class ShapeDataset(Dataset):
+  def __init__(self, n=2000, grid_size=7, img_size=448):
+    self.n = n
+    self.grid_size = grid_size
     self.img_size = img_size 
-    self.grid_size = 7
-    self.num_classes = 2
+    self.classes = ["circle", "square"]
   
-    self.img_paths = sorted(glob.glob(f"{self.img_dir}/*.jpg"))
-    self.transform = transforms.Compose([
-      transforms.Resize((img_size, img_size)),
-      transforms.ToTensor()
-    ])
-  
-  def __len__(self):
-    return len(self.img_paths)
+  def __len__(self): 
+    return self.n 
   
   def __getitem__(self, idx):
-    img_path = self.img_paths[idx]
-    label_path = img_path.replace("images", "labels").replace(".jpg", ".txt")
-    img = Image.open(img_path).convert("RGB")
-    img = self.transform(img)
-    target = torch.zeros((self.grid_size, self.grid_size, 5+self.num_classes)) # target = only 1 box
+    img = Image.new("RGB", (self.img_size, self.img_size), "black")
+    draw = ImageDraw.Draw(img)
+
+    # random shape parameters
+    cl = random.randint(0, 1)
+    cx, cy = random.randint(100,348), random.randint(100,348)
+    size = random.randint(40,100)
+    x1, y1, x2, y2 = cx-size, cy-size, cx+size, cy+size 
+
+    # circle
+    if cl == 0:
+      draw.ellipse([x1,y1,x2,y2], outline="white", fill="white")
+    # square
+    else:
+      draw.rectangle([x1,y1,x2,y2], outline="white", fill="white")
     
-    if os.path.exists(label_path):
-      with open(label_path) as f:
-        rows = f.readlines()
+    target = torch.zeros((self.grid_size, self.grid_size, 5*2+len(self.classes)))
+    cell_size = self.img_size / self.grid_size
+    gx, gy = cx/cell_size, cy/cell_size # center in [cell] unit
+    gi, gj = int(gx), int(gy) # center in which cell 
 
-    for row in rows:
-      row = row.strip().split()
-      cl, cx, cy, box_w, box_h = map(float, row)
-      cl = int(cl)
-      # i, j: cell row and cell column
-      i = int(cy*self.grid_size)
-      j = int(cx*self.grid_size)
-      # convert to cell-relative coords
-      cell_x = cx*self.grid_size-j
-      cell_y = cy*self.grid_size-i
-      # width/height of box in [cell] unit
-      width_cell = box_w * self.grid_size 
-      height_cell = box_h * self.grid_size 
+    x_cell, y_cell = gx-gi, gy-gj 
+    w_norm, h_norm = (2*size)/self.img_size, (2*size)/self.img_size 
 
-      # 1 cell has only 1 object
-      if target[i,j,5] == 0:
-        target[i,j,5] = 1
-        box = torch.tensor([cell_x, cell_y, width_cell, height_cell]) # (x-within-cell,y-within-cell,w,h)
-        target[i,j,0:4] = box 
-        target[i,j,5+cl] = 1
-    return img, target
-  
+    target[gj,gi,0:5] = torch.tensor([x_cell, y_cell, w_norm, h_norm, 1.0])
+    target[gj,gi,10+cl] = 1.0
+
+    # img: (3,H,W)
+    # target: (grid,grid,5*2+num_classes)
+    return torch.tensor(np.array(img)).permute(2,0,1).float()/255.0, target 

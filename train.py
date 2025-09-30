@@ -25,7 +25,7 @@ model.apply(init_weights)
 criterion = YoloLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-for epoch in range(30):
+for epoch in range(100):
   total = 0
   for imgs, targets in loader:
     imgs = imgs.to(device)

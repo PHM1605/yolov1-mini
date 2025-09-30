@@ -38,8 +38,9 @@ class ShapeDataset(Dataset):
 
     x_cell, y_cell = gx-gi, gy-gj 
     w_norm, h_norm = (2*size)/self.img_size, (2*size)/self.img_size 
-
-    target[gj,gi,0:5] = torch.tensor([x_cell, y_cell, w_norm, h_norm, 1.0])
+    
+    for b in range(2):
+      target[gj,gi,b*5:(b+1)*5] = torch.tensor([x_cell, y_cell, w_norm, h_norm, 1.0])
     target[gj,gi,10+cl] = 1.0
 
     # img: (3,H,W)

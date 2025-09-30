@@ -1,5 +1,5 @@
 from PIL import Image, ImageDraw
-from dataset import ShapeDataset
+from dataset import YoloToyDataset
 from model import YoloV1Tiny
 import torch
 
@@ -91,11 +91,11 @@ def decode_prediction(pred, S=7, B=2, img_size=448, conf_thresh=0.2, iou_thresh=
 
   return boxes, labels 
 
-dataset = ShapeDataset(2000)
-test_img, _ = dataset[100]
+dataset = YoloToyDataset("train")
+test_img, _ = dataset[7]
 model = YoloV1Tiny().to(device)
 model.load_state_dict(torch.load("yolov1tiny.pth", map_location=device))
 model.eval()
 with torch.no_grad():
   pred = model(test_img.unsqueeze(0).to(device))[0].cpu()
-save_prediction(test_img, pred, filename="predicted.png", class_names=["circle","square"], conf_thresh=0.2)
+save_prediction(test_img, pred, filename="predicted.png", class_names=dataset.classes, conf_thresh=0.2)

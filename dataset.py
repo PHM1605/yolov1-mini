@@ -8,7 +8,8 @@ class YoloToyDataset(Dataset):
     self.img_dir = os.path.join(data_dir, 'images', split)
     self.img_size = img_size 
     self.grid_size = 7
-    self.num_classes = 2
+    self.classes = ["triangle", "circle"]
+    self.num_classes = len(self.classes)
   
     self.img_paths = sorted(glob.glob(f"{self.img_dir}/*.jpg"))
     self.transform = transforms.Compose([

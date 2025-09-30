@@ -91,7 +91,7 @@ def decode_prediction(pred, S=7, B=2, img_size=448, conf_thresh=0.2, iou_thresh=
 
   return boxes, labels 
 
-dataset = YoloToyDataset("train")
+dataset = YoloToyDataset("val")
 test_img, _ = dataset[7]
 model = YoloV1Tiny().to(device)
 model.load_state_dict(torch.load("yolov1tiny.pth", map_location=device))

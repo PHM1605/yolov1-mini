@@ -12,9 +12,11 @@ def save_prediction(img, pred, filename="result.png", S=7, img_size=448, conf_th
   img_pil = Image.fromarray(img)
   draw = ImageDraw.Draw(img_pil)
   boxes, labels = decode_prediction(pred, S=S, img_size=img_size)
-  print(boxes)
-  print(labels)
+  # print(boxes)
+  # print(labels)
   for (x1, y1, x2, y2), cl in zip(boxes, labels):
+    x1, x2 = min(x1, x2), max(x1, x2)
+    y1, y2 = min(y1, y2), max(y1, y2)
     color = "red" if cl == 0 else "blue"
     draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
     draw.text((x1, y1-10), f"{cl}", fill=color)
@@ -39,7 +41,7 @@ def decode_prediction(pred, S=7, B=2, img_size=448):
   return boxes, labels 
 
 dataset = ShapeDataset(2000)
-test_img, _ = dataset[0]
+test_img, _ = dataset[12]
 model = YoloV1Tiny().to(device)
 model.load_state_dict(torch.load("yolov1tiny.pth", map_location=device))
 model.eval()

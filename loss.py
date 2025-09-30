@@ -25,7 +25,7 @@ class YoloLoss(nn.Module):
 
     # obj, nobj confidence loss
     conf_pred = pred[...,4]
-    conf_target = pred[...,4]
+    conf_target = target[...,4]
     loss_obj = F.mse_loss(conf_pred[obj_mask], conf_target[obj_mask], reduction="sum")
     loss_noobj = F.mse_loss(conf_pred[noobj_mask], conf_target[noobj_mask], reduction="sum")
 

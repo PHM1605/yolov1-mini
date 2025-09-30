@@ -1,4 +1,4 @@
-from dataset import ShapeDataset
+from dataset import YoloToyDataset
 from torch.utils.data import DataLoader
 from model import YoloV1Tiny
 from loss import YoloLoss
@@ -18,7 +18,7 @@ def init_weights(m):
       torch.nn.init.constant_(m.bias, 0.0)
 
 
-dataset = ShapeDataset(2000)
+dataset = YoloToyDataset("train")
 loader = DataLoader(dataset, batch_size=16, shuffle=True)
 model = YoloV1Tiny().to(device)
 model.apply(init_weights)

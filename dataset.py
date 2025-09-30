@@ -1,48 +1,49 @@
-import torch
-from torch.utils.data import Dataset, DataLoader
-from PIL import Image, ImageDraw 
-import random 
-import numpy as np 
+import glob, os, torch, math
+from torch.utils.data import Dataset 
+from PIL import Image 
+from torchvision import transforms
 
-class ShapeDataset(Dataset):
-  def __init__(self, n=2000, grid_size=7, img_size=448):
-    self.n = n
-    self.grid_size = grid_size
+class YoloToyDataset(Dataset):
+  def __init__(self, split, data_dir="data", img_size=448):
+    self.img_dir = os.path.join(data_dir, 'images', split)
     self.img_size = img_size 
-    self.classes = ["circle", "square"]
+    self.grid_size = 7
+    self.num_classes = 2
   
-  def __len__(self): 
-    return self.n 
+    self.img_paths = sorted(glob.glob(f"{self.img_dir}/*.jpg"))
+    self.transform = transforms.Compose([
+      transforms.Resize((img_size, img_size)),
+      transforms.ToTensor()
+    ])
+  
+  def __len__(self):
+    return len(self.img_paths)
   
   def __getitem__(self, idx):
-    img = Image.new("RGB", (self.img_size, self.img_size), "black")
-    draw = ImageDraw.Draw(img)
-
-    # random shape parameters
-    cl = random.randint(0, 1)
-    cx, cy = random.randint(100,348), random.randint(100,348)
-    size = random.randint(40,100)
-    x1, y1, x2, y2 = cx-size, cy-size, cx+size, cy+size 
-
-    # circle
-    if cl == 0:
-      draw.ellipse([x1,y1,x2,y2], outline="white", fill="white")
-    # square
-    else:
-      draw.rectangle([x1,y1,x2,y2], outline="white", fill="white")
+    img_path = self.img_paths[idx]
+    label_path = img_path.replace("images", "labels").replace(".jpg", ".txt")
+    img = Image.open(img_path).convert("RGB")
+    img = self.transform(img) # (3,H,W) with values [0..1]
+    target = torch.zeros((self.grid_size, self.grid_size, 5*2+self.num_classes)) # target = 2 boxes
     
-    target = torch.zeros((self.grid_size, self.grid_size, 5*2+len(self.classes)))
-    cell_size = self.img_size / self.grid_size
-    gx, gy = cx/cell_size, cy/cell_size # center in [cell] unit
-    gi, gj = int(gx), int(gy) # center in which cell 
+    if os.path.exists(label_path):
+      with open(label_path) as f:
+        rows = f.readlines()
 
-    x_cell, y_cell = gx-gi, gy-gj 
-    w_norm, h_norm = (2*size)/self.img_size, (2*size)/self.img_size 
-    
-    for b in range(2):
-      target[gj,gi,b*5:(b+1)*5] = torch.tensor([x_cell, y_cell, w_norm, h_norm, 1.0])
-    target[gj,gi,10+cl] = 1.0
+    for row in rows:
+      row = row.strip().split()
+      cl, cx, cy, w_norm, h_norm = map(float, row)
+      cl = int(cl)
+      # center in [cell] unit
+      gx, gy = cx*self.grid_size, cy*self.grid_size
+      # gi, gj: center in which cell with gj=row, gi=col 
+      gi, gj = int(gx), int(gy) 
+      # convert to cell-relative coords
+      x_cell, y_cell = gx-gi, gy-gj
 
-    # img: (3,H,W)
-    # target: (grid,grid,5*2+num_classes)
-    return torch.tensor(np.array(img)).permute(2,0,1).float()/255.0, target 
+      for b in range(2):
+        target[gj,gi,b*5:(b+1)*5] = torch.tensor([x_cell,y_cell,w_norm,h_norm,1.0])
+      target[gj,gi,10+cl] = 1.0
+
+    return img, target
+  

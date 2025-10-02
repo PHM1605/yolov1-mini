@@ -18,7 +18,7 @@ This will generate `yolov1tiny.pth` model file for you
 python test.py
 ```
 This will generate `predicted.png` output file of detection result. \
-**Notice:** change this line `test_img, _ = dataset[7]` index to use a different image.\
+**Notice:** change this line `test_img, _ = dataset[7]` index to use a different image.
 
 ## Example result
 ![Inference detection](predicted.png)

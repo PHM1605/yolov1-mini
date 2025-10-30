@@ -22,6 +22,7 @@ class YoloToyDataset(Dataset):
   
   def __getitem__(self, idx):
     img_path = self.img_paths[idx]
+    # print(img_path)
     label_path = img_path.replace("images", "labels").replace(".jpg", ".txt")
     img = Image.open(img_path).convert("RGB")
     img = self.transform(img) # (3,H,W) with values [0..1]

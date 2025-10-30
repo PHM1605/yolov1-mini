@@ -36,9 +36,9 @@ def nms(boxes, scores, iou_thresh=0.5):
     if inds.numel() == 0:
       break 
     # order=[5,3,1,2,6,0]; sorting of scores in descending order
-    # inds = [0,2,3] (index of the rest boxes [3,1,2,6,0])
-    # inds+1 = [1,3,4] => order becomes [3,2,6]
-    order = order[inds+1]
+    # inds = [0,2,3] (index of the rest boxes [3,2,6])
+    # inds+1 = [1,3,4] => indices of the chosen boxes
+    order = order[inds+1] # [3,2,6]
   
   return keep
 
@@ -62,6 +62,8 @@ def save_prediction(img, pred, filename="result.png", S=7, img_size=448, conf_th
   img_pil.save(filename)
   print(f"Saved prediction result to {filename}")
 
+# pred: Tensor(grid,grid,5*num_boxes+numclasses)
+# boxes (output): list of num_boxes of (x1,y1,x2,y2) in pixels
 def decode_prediction(pred, S=7, B=2, img_size=448, conf_thresh=0.2, iou_thresh=0.5):
   boxes, labels, scores = [], [], []
   cell_size = img_size / S 
@@ -98,4 +100,4 @@ model.load_state_dict(torch.load("yolov1tiny.pth", map_location=device))
 model.eval()
 with torch.no_grad():
   pred = model(test_img.unsqueeze(0).to(device))[0].cpu()
-save_prediction(test_img, pred, filename="predicted.png", class_names=dataset.classes, conf_thresh=0.2)
+save_prediction(test_img, pred, filename="predicted.png", class_names=dataset.classes, conf_thresh=0.2) 

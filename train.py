@@ -38,5 +38,5 @@ for epoch in range(200):
     total += loss.item()
   print(f"Epoch {epoch+1} Loss: {total/len(loader):.4f}")
 
-torch.save(model.state_dict(), "yolov1tiny.pth")
+torch.save(model.state_dict(), "yolov1tiny.pt")
 print("Model saved to yolov1tiny.pth")

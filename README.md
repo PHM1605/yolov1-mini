@@ -11,7 +11,7 @@ python scripts/gen_synth_dataset.py
 ```bash
 python train.py
 ```
-This will generate `yolov1tiny.pth` model file for you
+This will generate `yolov1tiny.pt` model file for you
 
 ### 3. Inference
 ```bash
